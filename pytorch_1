@@ -1,0 +1,132 @@
+1. 数据加载
+python
+复制代码
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision import datasets
+from torchvision.transforms import ToTensor
+
+# Download training data from open datasets.
+training_data = datasets.FashionMNIST(
+    root="data",
+    train=True,
+    download=True,
+    transform=ToTensor(),
+)
+
+# Download test data from open datasets.
+test_data = datasets.FashionMNIST(
+    root="data",
+    train=False,
+    download=True,
+    transform=ToTensor(),
+)
+datasets.FashionMNIST 用于从 Open Datasets 下载并加载 FashionMNIST 数据集，其中 train=True 表示训练数据集，train=False 表示测试数据集。
+transform=ToTensor() 将图像数据转换为张量（Tensor），以便 PyTorch 可以处理。
+python
+复制代码
+batch_size = 64
+
+# Create data loaders.
+train_dataloader = DataLoader(training_data, batch_size=batch_size)
+test_dataloader = DataLoader(test_data, batch_size=batch_size)
+
+for X, y in test_dataloader:
+    print(f"Shape of X [N, C, H, W]: {X.shape}")
+    print(f"Shape of y: {y.shape} {y.dtype}")
+    break
+DataLoader 用于将数据集分批处理，batch_size=64 指定每批次的数据量。
+for X, y in test_dataloader 循环用于输出数据的形状以确认数据加载正确。
+2. 设备设置
+python
+复制代码
+device = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
+print(f"Using {device} device")
+选择使用 GPU（cuda）、Apple Silicon GPU（mps）或 CPU（cpu）进行训练，依据设备的可用性。
+3. 模型定义
+python
+复制代码
+class NeuralNetwork(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.flatten = nn.Flatten()
+        self.linear_relu_stack = nn.Sequential(
+            nn.Linear(28 * 28, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 10)
+        )
+
+    def forward(self, x):
+        x = self.flatten(x)
+        logits = self.linear_relu_stack(x)
+        return logits
+
+model = NeuralNetwork().to(device)
+print(model)
+NeuralNetwork 类定义了一个简单的前馈神经网络，包括一个展平层（nn.Flatten()）和三个全连接层（nn.Linear）以及 ReLU 激活函数。
+28 * 28 是输入图像的像素数（28x28），512 是隐藏层的神经元数，10 是输出层的神经元数（类别数）。
+4. 损失函数和优化器
+python
+复制代码
+loss_fn = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+loss_fn 是交叉熵损失函数，用于分类任务。
+optimizer 是随机梯度下降（SGD）优化器，用于更新模型的参数，学习率设为 1e-3。
+5. 训练和测试函数
+python
+复制代码
+def train(dataloader, model, loss_fn, optimizer):
+    size = len(dataloader.dataset)
+    model.train()
+    for batch, (X, y) in enumerate(dataloader):
+        X, y = X.to(device), y.to(device)
+
+        # Compute prediction error
+        pred = model(X)
+        loss = loss_fn(pred, y)
+
+        # Backpropagation
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        if batch % 100 == 0:
+            loss, current = loss.item(), (batch + 1) * len(X)
+            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+
+def test(dataloader, model, loss_fn):
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    model.eval()
+    test_loss, correct = 0, 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+train 函数执行一个训练周期，计算损失，执行反向传播，并更新模型参数。每100个批次打印一次当前损失。
+test 函数在测试集上评估模型性能，计算测试损失和准确率。
+6. 主训练循环
+python
+复制代码
+if __name__ == '__main__':
+    epochs = 10
+    for t in range(epochs):
+        print(f"Epoch {t + 1}\n-------------------------------")
+        train(train_dataloader, model, loss_fn, optimizer)
+        test(test_dataloader, model, loss_fn)
+    print("Done!")
+主训练循环在指定的 epochs 数量内运行训练和测试，每个周期后打印当前周期的训练和测试结果。
